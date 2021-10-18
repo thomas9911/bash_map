@@ -1,4 +1,4 @@
-use serde_json::{from_str, to_string, Value};
+use serde_json::{from_str, to_string, to_string_pretty, Value};
 use std::env::var;
 
 use argh::FromArgs;
@@ -8,6 +8,9 @@ use argh::FromArgs;
 struct TopLevel {
     #[argh(subcommand)]
     command: MySubCommandEnum,
+    #[argh(switch)]
+    /// pretty print the map
+    pretty: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -80,10 +83,19 @@ fn main() -> Result<(), String> {
 
     match arg.command {
         Init(_) => Ok(println!("{{}}")),
-        Get(args) => Ok(println!("{}", do_get(args))),
-        Set(args) => Ok(println!("{}", do_set(args))),
+        Get(args) => Ok(println!("{}", do_get(args, arg.pretty))),
+        Set(args) => Ok(println!("{}", do_set(args, arg.pretty))),
         Type(args) => Ok(println!("{}", do_type(args))),
     }
+}
+
+fn value_printer(pretty: bool, value: &serde_json::Value) -> String {
+    if pretty {
+        to_string_pretty(value)
+    } else {
+        to_string(value)
+    }
+    .unwrap_or(String::new())
 }
 
 fn do_type(args: SubCommandType) -> String {
@@ -100,14 +112,14 @@ fn do_type(args: SubCommandType) -> String {
     .to_string()
 }
 
-fn do_set(args: SubCommandSet) -> String {
+fn do_set(args: SubCommandSet, pretty: bool) -> String {
     let mut value = variable_or_object(&args.variable);
     match pointer_mut(&mut value, &args.pointer.replace(r"\/", "/")) {
         Some(val) => {
             *val = args.value;
-            to_string(&value).unwrap_or(String::new())
+            value_printer(pretty, &value)
         }
-        None => to_string(&value).unwrap_or(String::new()),
+        None => value_printer(pretty, &value),
     }
 }
 
@@ -155,9 +167,9 @@ fn parse_index(s: &str) -> Option<usize> {
     s.parse().ok()
 }
 
-fn do_get(args: SubCommandGet) -> String {
+fn do_get(args: SubCommandGet, pretty: bool) -> String {
     match variable_or_object(&args.variable).pointer(&args.pointer.replace(r"\/", "/")) {
-        Some(val) => to_string(val).unwrap_or(String::new()),
+        Some(val) => value_printer(pretty, val),
         None => String::new(),
     }
 }
@@ -240,7 +252,7 @@ mod doc_test {
             let args =
                 SubCommandGet::from_args(&[], &[line.input, &line.pointer.replace("\"", "")])
                     .unwrap();
-            let output = do_get(args);
+            let output = do_get(args, false);
 
             assert_eq!(output, line.output);
             amount_of_lines += 1;
@@ -269,7 +281,7 @@ mod doc_test {
                 &[line.input, &line.pointer.replace("\"", ""), &line.value],
             )
             .unwrap();
-            let output = do_set(args);
+            let output = do_set(args, false);
 
             assert_eq!(output, line.output);
             amount_of_lines += 1;
@@ -291,11 +303,14 @@ mod set_test {
 
         assert_eq!(
             data.clone(),
-            do_set(SubCommandSet {
-                variable: data,
-                pointer: "invalid key".to_string(),
-                value: serde_json::json!(1.0)
-            })
+            do_set(
+                SubCommandSet {
+                    variable: data,
+                    pointer: "invalid key".to_string(),
+                    value: serde_json::json!(1.0)
+                },
+                false
+            )
         );
     }
 
@@ -311,11 +326,14 @@ mod set_test {
                 "key": 1.0
             })
             .to_string(),
-            do_set(SubCommandSet {
-                variable: data,
-                pointer: "/key".to_string(),
-                value: serde_json::json!(1.0)
-            })
+            do_set(
+                SubCommandSet {
+                    variable: data,
+                    pointer: "/key".to_string(),
+                    value: serde_json::json!(1.0)
+                },
+                false
+            )
         );
     }
 
@@ -332,11 +350,14 @@ mod set_test {
                 "other": 1.0
             })
             .to_string(),
-            do_set(SubCommandSet {
-                variable: data,
-                pointer: "/other".to_string(),
-                value: serde_json::json!(1.0)
-            })
+            do_set(
+                SubCommandSet {
+                    variable: data,
+                    pointer: "/other".to_string(),
+                    value: serde_json::json!(1.0)
+                },
+                false
+            )
         );
     }
 
@@ -353,11 +374,14 @@ mod set_test {
                 "nested": {"other": 1.0}
             })
             .to_string(),
-            do_set(SubCommandSet {
-                variable: data,
-                pointer: "/nested/other".to_string(),
-                value: serde_json::json!(1.0)
-            })
+            do_set(
+                SubCommandSet {
+                    variable: data,
+                    pointer: "/nested/other".to_string(),
+                    value: serde_json::json!(1.0)
+                },
+                false
+            )
         );
     }
 
@@ -374,11 +398,14 @@ mod set_test {
                 "a": {"b": {"c": {"d": {"e": {"f": {"g": {"h": 1.0}}}}}}}
             })
             .to_string(),
-            do_set(SubCommandSet {
-                variable: data,
-                pointer: "/a/b/c/d/e/f/g/h".to_string(),
-                value: serde_json::json!(1.0)
-            })
+            do_set(
+                SubCommandSet {
+                    variable: data,
+                    pointer: "/a/b/c/d/e/f/g/h".to_string(),
+                    value: serde_json::json!(1.0)
+                },
+                false
+            )
         );
     }
 }
@@ -396,10 +423,13 @@ mod get_test {
 
         assert_eq!(
             r#""number""#,
-            do_get(SubCommandGet {
-                variable: data,
-                pointer: "\\/key".to_string()
-            })
+            do_get(
+                SubCommandGet {
+                    variable: data,
+                    pointer: "\\/key".to_string()
+                },
+                false
+            )
         );
     }
 
@@ -412,10 +442,13 @@ mod get_test {
 
         assert_eq!(
             r#""number""#,
-            do_get(SubCommandGet {
-                variable: data,
-                pointer: "/key".to_string()
-            })
+            do_get(
+                SubCommandGet {
+                    variable: data,
+                    pointer: "/key".to_string()
+                },
+                false
+            )
         );
     }
 
@@ -432,18 +465,24 @@ mod get_test {
 
         assert_eq!(
             r#""two""#,
-            do_get(SubCommandGet {
-                variable: data.to_string(),
-                pointer: "/key/1".to_string()
-            })
+            do_get(
+                SubCommandGet {
+                    variable: data.to_string(),
+                    pointer: "/key/1".to_string()
+                },
+                false
+            )
         );
 
         assert_eq!(
             r#""three""#,
-            do_get(SubCommandGet {
-                variable: data.to_string(),
-                pointer: "/key/2".to_string()
-            })
+            do_get(
+                SubCommandGet {
+                    variable: data.to_string(),
+                    pointer: "/key/2".to_string()
+                },
+                false
+            )
         );
     }
 
@@ -460,26 +499,35 @@ mod get_test {
 
         assert_eq!(
             r#"3"#,
-            do_get(SubCommandGet {
-                variable: data.to_string(),
-                pointer: "/key/2/three".to_string()
-            })
+            do_get(
+                SubCommandGet {
+                    variable: data.to_string(),
+                    pointer: "/key/2/three".to_string()
+                },
+                false
+            )
         );
 
         assert_eq!(
             r#"2"#,
-            do_get(SubCommandGet {
-                variable: data.to_string(),
-                pointer: "/key/1/two".to_string()
-            })
+            do_get(
+                SubCommandGet {
+                    variable: data.to_string(),
+                    pointer: "/key/1/two".to_string()
+                },
+                false
+            )
         );
 
         assert_eq!(
             r#"{"one":1}"#,
-            do_get(SubCommandGet {
-                variable: data.to_string(),
-                pointer: "/key/0".to_string()
-            })
+            do_get(
+                SubCommandGet {
+                    variable: data.to_string(),
+                    pointer: "/key/0".to_string()
+                },
+                false
+            )
         );
     }
 }
