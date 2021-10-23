@@ -1,3 +1,5 @@
+#! /bin/bash
+
 cargo build
 
 alias map='./target/debug/bash_map.exe'
@@ -11,5 +13,10 @@ typing=$(map type $bool)
 if [ $typing == "boolean" ] && [ $one -eq 1 ] && [ $(map get "$result" '\/text') == '"something"' ]; then
     result=$(map set result '\/extra' '{"test": 2.1e3}')
     result=$(map set result '\/nested/testing' '"five"')
-    echo $result
+
+    expected="{\"boolean_value\":true,\"extra\":{\"test\":2100.0},\"nested\":{\"testing\":\"five\"},\"number\":1,\"text\":\"something\"}"
+
+    if [ "$result" != "$expected" ]; then
+        exit 1
+    fi
 fi
