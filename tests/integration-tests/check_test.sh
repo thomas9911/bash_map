@@ -19,4 +19,6 @@ if [ $typing == "boolean" ] && [ $one -eq 1 ] && [ $(map get "$result" '\/text')
     if [ "$result" != "$expected" ]; then
         exit 1
     fi
+else
+    exit 1
 fi

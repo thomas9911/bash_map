@@ -3,6 +3,40 @@ use std::env::var;
 
 use argh::FromArgs;
 
+#[derive(PartialEq, Debug)]
+pub struct Pointer {
+    inner: String,
+}
+
+impl std::str::FromStr for Pointer {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if ["", "''", r#""""#].contains(&s) {
+            // fix for powershell to allow empty pointers
+            return Ok(Pointer {
+                inner: String::new(),
+            });
+        }
+
+        let inner = s.replace(r"\/", "/").to_string();
+
+        Ok(Pointer { inner })
+    }
+}
+
+impl Pointer {
+    pub fn new_unwrap(s: &str) -> Pointer {
+        use std::str::FromStr;
+
+        Pointer::from_str(s).unwrap()
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.inner.as_ref()
+    }
+}
+
 #[derive(FromArgs, PartialEq, Debug)]
 /// Top-level command.
 struct TopLevel {
@@ -11,6 +45,9 @@ struct TopLevel {
     #[argh(switch)]
     /// pretty print the map
     pretty: bool,
+    #[argh(switch)]
+    /// print the output as an escaped string
+    escaped: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -50,7 +87,7 @@ struct SubCommandGet {
     #[argh(positional)]
     variable: String,
     #[argh(positional)]
-    pointer: String,
+    pointer: Pointer,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -68,7 +105,7 @@ struct SubCommandSet {
     #[argh(positional)]
     variable: String,
     #[argh(positional)]
-    pointer: String,
+    pointer: Pointer,
     #[argh(positional, from_str_fn(value_from_str))]
     value: Value,
 }
@@ -81,12 +118,20 @@ fn main() -> Result<(), String> {
     use MySubCommandEnum::*;
     let arg: TopLevel = argh::from_env();
 
-    match arg.command {
-        Init(_) => Ok(println!("{{}}")),
-        Get(args) => Ok(println!("{}", do_get(args, arg.pretty))),
-        Set(args) => Ok(println!("{}", do_set(args, arg.pretty))),
-        Type(args) => Ok(println!("{}", do_type(args))),
-    }
+    let output = match arg.command {
+        Init(_) => String::from("{}"),
+        Get(args) => do_get(args, arg.pretty),
+        Set(args) => do_set(args, arg.pretty),
+        Type(args) => do_type(args),
+    };
+
+    if arg.escaped {
+        println!("{:?}", output)
+    } else {
+        println!("{}", output)
+    };
+
+    Ok(())
 }
 
 fn value_printer(pretty: bool, value: &serde_json::Value) -> String {
@@ -114,7 +159,7 @@ fn do_type(args: SubCommandType) -> String {
 
 fn do_set(args: SubCommandSet, pretty: bool) -> String {
     let mut value = variable_or_object(&args.variable);
-    match pointer_mut(&mut value, &args.pointer.replace(r"\/", "/")) {
+    match pointer_mut(&mut value, &args.pointer.as_str()) {
         Some(val) => {
             *val = args.value;
             value_printer(pretty, &value)
@@ -168,7 +213,7 @@ fn parse_index(s: &str) -> Option<usize> {
 }
 
 fn do_get(args: SubCommandGet, pretty: bool) -> String {
-    match variable_or_object(&args.variable).pointer(&args.pointer.replace(r"\/", "/")) {
+    match variable_or_object(&args.variable).pointer(&args.pointer.as_str()) {
         Some(val) => value_printer(pretty, val),
         None => String::new(),
     }
@@ -292,7 +337,7 @@ mod doc_test {
 
 #[cfg(test)]
 mod set_test {
-    use super::{do_set, SubCommandSet};
+    use super::{do_set, Pointer, SubCommandSet};
 
     #[test]
     fn invalid_key_returns_the_input() {
@@ -306,7 +351,7 @@ mod set_test {
             do_set(
                 SubCommandSet {
                     variable: data,
-                    pointer: "invalid key".to_string(),
+                    pointer: Pointer::new_unwrap("invalid key"),
                     value: serde_json::json!(1.0)
                 },
                 false
@@ -329,7 +374,7 @@ mod set_test {
             do_set(
                 SubCommandSet {
                     variable: data,
-                    pointer: "/key".to_string(),
+                    pointer: Pointer::new_unwrap("/key"),
                     value: serde_json::json!(1.0)
                 },
                 false
@@ -353,7 +398,7 @@ mod set_test {
             do_set(
                 SubCommandSet {
                     variable: data,
-                    pointer: "/other".to_string(),
+                    pointer: Pointer::new_unwrap("/other"),
                     value: serde_json::json!(1.0)
                 },
                 false
@@ -377,7 +422,7 @@ mod set_test {
             do_set(
                 SubCommandSet {
                     variable: data,
-                    pointer: "/nested/other".to_string(),
+                    pointer: Pointer::new_unwrap("/nested/other"),
                     value: serde_json::json!(1.0)
                 },
                 false
@@ -401,7 +446,7 @@ mod set_test {
             do_set(
                 SubCommandSet {
                     variable: data,
-                    pointer: "/a/b/c/d/e/f/g/h".to_string(),
+                    pointer: Pointer::new_unwrap("/a/b/c/d/e/f/g/h"),
                     value: serde_json::json!(1.0)
                 },
                 false
@@ -412,7 +457,7 @@ mod set_test {
 
 #[cfg(test)]
 mod get_test {
-    use super::{do_get, SubCommandGet};
+    use super::{do_get, Pointer, SubCommandGet};
 
     #[test]
     fn escaped_key() {
@@ -426,7 +471,7 @@ mod get_test {
             do_get(
                 SubCommandGet {
                     variable: data,
-                    pointer: "\\/key".to_string()
+                    pointer: Pointer::new_unwrap("\\/key")
                 },
                 false
             )
@@ -445,7 +490,7 @@ mod get_test {
             do_get(
                 SubCommandGet {
                     variable: data,
-                    pointer: "/key".to_string()
+                    pointer: Pointer::new_unwrap("/key")
                 },
                 false
             )
@@ -468,7 +513,7 @@ mod get_test {
             do_get(
                 SubCommandGet {
                     variable: data.to_string(),
-                    pointer: "/key/1".to_string()
+                    pointer: Pointer::new_unwrap("/key/1")
                 },
                 false
             )
@@ -479,7 +524,7 @@ mod get_test {
             do_get(
                 SubCommandGet {
                     variable: data.to_string(),
-                    pointer: "/key/2".to_string()
+                    pointer: Pointer::new_unwrap("/key/2")
                 },
                 false
             )
@@ -502,7 +547,7 @@ mod get_test {
             do_get(
                 SubCommandGet {
                     variable: data.to_string(),
-                    pointer: "/key/2/three".to_string()
+                    pointer: Pointer::new_unwrap("/key/2/three")
                 },
                 false
             )
@@ -513,7 +558,7 @@ mod get_test {
             do_get(
                 SubCommandGet {
                     variable: data.to_string(),
-                    pointer: "/key/1/two".to_string()
+                    pointer: Pointer::new_unwrap("/key/1/two")
                 },
                 false
             )
@@ -524,7 +569,7 @@ mod get_test {
             do_get(
                 SubCommandGet {
                     variable: data.to_string(),
-                    pointer: "/key/0".to_string()
+                    pointer: Pointer::new_unwrap("/key/0")
                 },
                 false
             )
