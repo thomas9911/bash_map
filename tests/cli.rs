@@ -73,6 +73,30 @@ fn type_cmd() {
 }
 
 #[test]
+fn compare_empty_cmd() {
+    let mut cmd = Command::cargo_bin(assert_cmd::crate_name!()).unwrap();
+
+    cmd.arg("compare").arg("{}").arg("{}");
+    cmd.assert().stdout(predicate::eq("true\n")).success();
+}
+
+#[test]
+fn compare_cmd_equal_different_order() {
+    let mut cmd = Command::cargo_bin(assert_cmd::crate_name!()).unwrap();
+
+    cmd.arg("compare").arg(r#"{"testing": 5, "test": 1}"#).arg(r#"{"test": 1, "testing": 5}"#);
+    cmd.assert().stdout(predicate::eq("true\n")).success();
+}
+
+#[test]
+fn compare_cmd_not_equal() {
+    let mut cmd = Command::cargo_bin(assert_cmd::crate_name!()).unwrap();
+
+    cmd.arg("compare").arg(r#"{"test": 1}"#).arg("{}");
+    cmd.assert().stderr(predicate::eq("Error: \"false\"\n")).failure();
+}
+
+#[test]
 fn integration_test() {
     let mut cmd = Command::new("baret");
 

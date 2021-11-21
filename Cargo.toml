@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 serde_json = "*"
 argh = "*"
+jsonpath_lib = "*"
 
 [dev-dependencies]
 assert_cmd = "2"

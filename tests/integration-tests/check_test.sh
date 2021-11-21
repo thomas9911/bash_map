@@ -16,7 +16,7 @@ if [ $typing == "boolean" ] && [ $one -eq 1 ] && [ $(map get "$result" '\/text')
 
     expected="{\"boolean_value\":true,\"extra\":{\"test\":2100.0},\"nested\":{\"testing\":\"five\"},\"number\":1,\"text\":\"something\"}"
 
-    if [ "$result" != "$expected" ]; then
+    if ! map compare $expected $result; then
         exit 1
     fi
 else

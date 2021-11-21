@@ -56,6 +56,7 @@ enum MySubCommandEnum {
     Init(SubCommandInit),
     Get(SubCommandGet),
     Set(SubCommandSet),
+    Compare(SubCommandCompare),
     Type(SubCommandType),
 }
 
@@ -70,6 +71,16 @@ struct SubCommandInit {}
 struct SubCommandType {
     #[argh(positional)]
     variable: String,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Compare the two jsons
+#[argh(subcommand, name = "compare")]
+struct SubCommandCompare {
+    #[argh(positional)]
+    first: String,
+    #[argh(positional)]
+    second: String,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -123,6 +134,10 @@ fn main() -> Result<(), String> {
         Get(args) => do_get(args, arg.pretty),
         Set(args) => do_set(args, arg.pretty),
         Type(args) => do_type(args),
+        Compare(args) => match do_compare(args) {
+            Ok(_) => "true".to_string(),
+            Err(_) => return Err("false".to_string())
+        },
     };
 
     if arg.escaped {
@@ -155,6 +170,17 @@ fn do_type(args: SubCommandType) -> String {
         Object(_) => "object",
     }
     .to_string()
+}
+
+fn do_compare(args: SubCommandCompare) -> Result<(), ()> {
+    let first = variable_or_object(&args.first);
+    let second = variable_or_object(&args.second);
+
+    if first == second {
+        Ok(())
+    } else {
+        Err(())
+    }
 }
 
 fn do_set(args: SubCommandSet, pretty: bool) -> String {
